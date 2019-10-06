@@ -1,37 +1,213 @@
 import 'dart:typed_data';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:oklok/helpers/bluetooth_lock.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:oklok/bloc/bloc.dart';
 
 class LockAPI extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    BluetoothSelectedDeviceBloc _bluetoothSelectedDeviceBloc = BlocProvider.of<BluetoothSelectedDeviceBloc>(context);
 
-  void _tokenAcquisition() {
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider.value(
+          value: _bluetoothSelectedDeviceBloc,
+        )
+      ],
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text("Bluetooth Lock API"),
+          actions: <Widget>[ConnectDeviceButton()],
+        ),
+        body: Column(
+          children: <Widget>[BluetoothStateView()],
+        ),
+        bottomNavigationBar: Buttons(),
+      ),
+    );
+  }
+}
 
-//    Uint8List _key = Uint8List.fromList([0x12, 0x08, 0x13, 0x89, 0x63, 0x90, 0x35, 0x80, 0x45, 0x86, 0x26, 0x48, 0x40, 0x15, 0x51, 0x51]);     0   1     2     3     4     5     6     7     8     9     10    11    12    13    14      15
-    Uint8List _key = Uint8List.fromList([0x3a, 0x60, 0x43, 0x2a, 0x5c, 0x01, 0x21, 0x1f, 0x29, 0x1e, 0x0f, 0x4e, 0x0c, 0x13, 0x28, 0x25]);
+class ConnectDeviceButton extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    BluetoothSelectedDeviceBloc _bluetoothSelectedDeviceBloc = BlocProvider.of<BluetoothSelectedDeviceBloc>(context);
+    return BlocBuilder<BluetoothSelectedDeviceBloc, BluetoothSelectedDeviceState>(builder: (context, state) {
 
-    BluetoothLock command = BluetoothLock(_key);
-    Uint8List encrypted = command.tokenAcquisition();
-    print('Encrypted : $encrypted');
+      if (state is InitialSelectedBluetoothDeviceState) {
+        return FlatButton(
+          textColor: Colors.white,
+          child: Text('Connect'),
+          onPressed: () {
+            _bluetoothSelectedDeviceBloc.dispatch(ConnectToDevice());
+          },
+          shape: CircleBorder(side: BorderSide(color: Colors.transparent)),
+        );
+      } else if (state is ConnectedToDevice) {
+        return FlatButton(
+          textColor: Colors.white,
+          child: Text('Disconnect'),
+          onPressed: () {
+            _bluetoothSelectedDeviceBloc.dispatch(DisconnectFromDevice());
+          },
+          shape: CircleBorder(side: BorderSide(color: Colors.transparent)),
+        );
+      } else {
+        return Container();
+      }
 
-    Uint8List decrypted = BluetoothCipher.decrypt(encrypted, _key);
-    print('Decrypted : $decrypted');
 
+
+    });
+  }
+}
+
+class BluetoothStateView extends StatefulWidget {
+  @override
+  _BluetoothStateViewState createState() => _BluetoothStateViewState();
+}
+
+class _BluetoothStateViewState extends State<BluetoothStateView> {
+  BluetoothSelectedDeviceBloc _bluetoothSelectedDeviceBloc;
+
+  @override
+  void initState() {
+    super.initState();
+    _bluetoothSelectedDeviceBloc = BlocProvider.of<BluetoothSelectedDeviceBloc>(context);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Lock API"),
-      ),
-      body: Column(
-        children: <Widget>[
-          RaisedButton(
-            child: Text("Token Acquisition"),
-            onPressed: _tokenAcquisition,
-          )
-        ],
-      ),
+    return BlocBuilder<BluetoothSelectedDeviceBloc, BluetoothSelectedDeviceState>(builder: (context, state) {
+      return Expanded(
+        child: Card(
+          child: ListView(
+            children: <Widget>[
+              ListTile(
+                title: Text("Status"),
+                subtitle: Builder(
+                  builder: (context) {
+                    if (state is ConnectingToDevice) {
+                      return Text('Connecting');
+                    } else if (state is ConnectedToDevice) {
+                      return Text('Connected');
+                    } else {
+                      return Text('Disconnect');
+                    }
+                  },
+                ),
+                dense: true,
+              ),
+              ListTile(
+                title: Text("Device Name"),
+                subtitle: Text(_bluetoothSelectedDeviceBloc.device.name),
+                dense: true,
+              ),
+              ListTile(
+                title: Text("Mac Address"),
+                subtitle: Text(_bluetoothSelectedDeviceBloc.device.id.id),
+                dense: true,
+                onTap: () {
+                  if (state is ConnectedToDevice) {}
+                },
+              ),
+              ListTile(
+                title: Text("Command Type"),
+                subtitle: Builder(
+                  builder: (context) {
+                    if (state is ConnectedToDevice) {
+                      return Text(state.bluetoothEventCommunication.type.toString());
+                    } else {
+                      return Text(
+                        'null',
+                        style: TextStyle(fontStyle: FontStyle.italic),
+                      );
+                    }
+                  },
+                ),
+                dense: true,
+              ),
+              ListTile(
+                title: Text("Response Decrypted"),
+                subtitle: Builder(
+                  builder: (context) {
+                    if (state is ConnectedToDevice) {
+                      return Text(state.bluetoothEventCommunication.response.toString());
+                    } else {
+                      return Text(
+                        'null',
+                        style: TextStyle(fontStyle: FontStyle.italic),
+                      );
+                    }
+                  },
+                ),
+                dense: true,
+              ),
+            ],
+          ),
+        ),
+      );
+    });
+  }
+}
+
+class Buttons extends StatefulWidget {
+  @override
+  _ButtonsState createState() => _ButtonsState();
+}
+
+class _ButtonsState extends State<Buttons> {
+  BluetoothSelectedDeviceBloc _bluetoothSelectedDeviceBloc;
+
+  Uint8List token;
+
+  @override
+  void initState() {
+    super.initState();
+    _bluetoothSelectedDeviceBloc = BlocProvider.of<BluetoothSelectedDeviceBloc>(context);
+  }
+
+  void _tokenAcquisition() {
+    this._bluetoothSelectedDeviceBloc.dispatch(TokenAcquisition());
+  }
+
+  void _unlocking() {
+    this._bluetoothSelectedDeviceBloc.dispatch(BluetoothDeviceUnlock());
+  }
+
+  void _checkPower() {
+    this._bluetoothSelectedDeviceBloc.dispatch(BluetoothDeviceCheckPower());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<BluetoothSelectedDeviceBloc, BluetoothSelectedDeviceState>(
+      builder: (context, state) {
+        return Padding(
+          padding: EdgeInsets.all(16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              RaisedButton.icon(
+                icon: Icon(Icons.vpn_key),
+                label: Text("Token"),
+                onPressed: (state is ConnectedToDevice) ? _tokenAcquisition : null,
+              ),
+              RaisedButton.icon(
+                icon: Icon(Icons.lock_open),
+                label: Text("Unlock"),
+                onPressed: (state is ConnectedToDevice) ? _unlocking: null,
+              ),
+              RaisedButton.icon(
+                icon: Icon(Icons.battery_std),
+                label: Text("Battery"),
+                onPressed: (state is ConnectedToDevice) ? _checkPower: null,
+              )
+            ],
+          ),
+        );
+      }
     );
   }
 }
